@@ -41,3 +41,13 @@ pip install -r requirements.txt
 5. Add tests to verify key behaviors.
 6. Connect your logic to the Streamlit UI in `app.py`.
 7. Refine UML so it matches what you actually built.
+
+## Smarter Scheduling
+
+Recent improvements add more practical planning behavior for busy owners:
+
+- Time-aware ordering: tasks are sorted by preferred time windows, with untimed tasks placed after timed ones.
+- Flexible filtering: tasks can be filtered by completion status and by pet name.
+- Recurring care automation: marking a `daily` or `weekly` task complete automatically creates the next pending occurrence.
+- Due-date rollover: recurrence dates are advanced using `timedelta` (`+1 day` for daily, `+7 days` for weekly).
+- UI support for recurrence: owners can set frequency and due date directly from the Streamlit task builder.

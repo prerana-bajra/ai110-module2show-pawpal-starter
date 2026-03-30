@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from enum import Enum
 from typing import Dict, List, Optional
 from uuid import UUID, uuid4
@@ -15,6 +15,17 @@ class TaskType(str, Enum):
     GROOMING = "GROOMING"
     TRAINING = "TRAINING"
     OTHER = "OTHER"
+
+
+def task_time_sort_key(task: "Task") -> tuple[int, str]:
+    """Build a deterministic key for ordering tasks by preferred time then title.
+
+    Tasks without a preferred time window are placed after timed tasks by using
+    a sentinel hour value of 24.
+    """
+    if task.preferred_window is None:
+        return (24, task.title.lower())
+    return (task.preferred_window.start_hour, task.title.lower())
 
 
 @dataclass
@@ -35,6 +46,9 @@ class Task:
     priority: int
     importance: int
     status: str = "pending"
+    time: Optional[str] = None
+    due_date: Optional[date] = None
+    frequency: Optional[str] = None
     preferred_window: Optional[TimeWindow] = None
     required: bool = False
     task_id: UUID = field(default_factory=uuid4)
@@ -44,6 +58,8 @@ class Task:
         if self.duration_minutes < 0:
             return False
         if self.priority < 0 or self.importance < 0:
+            return False
+        if self.frequency is not None and self.frequency.lower() not in {"daily", "weekly"}:
             return False
         if self.preferred_window and self.preferred_window.end_hour <= self.preferred_window.start_hour:
             return False
@@ -60,9 +76,40 @@ class Task:
 
         return base_score - 1.0
 
-    def mark_complete(self) -> None:
-        """Mark this task as completed."""
+    def mark_complete(self, completed_on: Optional[date] = None) -> Optional["Task"]:
+        """Complete this task and optionally generate the next recurring instance.
+
+        For daily and weekly tasks, this returns a new pending Task with an
+        incremented due date. Non-recurring tasks return None.
+        """
         self.status = "completed"
+
+        if self.frequency is None:
+            return None
+
+        normalized_frequency = self.frequency.lower()
+        if normalized_frequency not in {"daily", "weekly"}:
+            return None
+
+        if completed_on is None:
+            completed_on = date.today()
+
+        day_delta = 1 if normalized_frequency == "daily" else 7
+        next_due_date = completed_on + timedelta(days=day_delta)
+
+        return Task(
+            title=self.title,
+            task_type=self.task_type,
+            duration_minutes=self.duration_minutes,
+            priority=self.priority,
+            importance=self.importance,
+            status="pending",
+            time=self.time,
+            due_date=next_due_date,
+            frequency=self.frequency,
+            preferred_window=self.preferred_window,
+            required=self.required,
+        )
 
 
 @dataclass
@@ -85,6 +132,16 @@ class Pet:
     def get_tasks(self) -> List[Task]:
         """Return a shallow copy of this pet's tasks."""
         return list(self.tasks)
+
+    def mark_task_complete(self, task_id: UUID, completed_on: Optional[date] = None) -> Optional[Task]:
+        """Complete a task by id and append the next recurring instance when applicable."""
+        for task in self.tasks:
+            if task.task_id == task_id:
+                next_task = task.mark_complete(completed_on=completed_on)
+                if next_task is not None:
+                    self.add_task(next_task)
+                return next_task
+        return None
 
 
 @dataclass
@@ -166,3 +223,51 @@ class Scheduler:
     def validate_inputs(self, owner: Owner, tasks: List[Task]) -> None:
         """Validate owner and task inputs before scheduling begins."""
         raise NotImplementedError
+
+    def sort_by_time(self, tasks: List[Task]) -> List[Task]:
+        """Sort tasks by preferred time window start hour, then title.
+
+        Tasks without a preferred time window are placed last.
+        """
+        return sorted(tasks, key=task_time_sort_key)
+
+    def filter_tasks_by_status(self, owner: Owner, status: str) -> List[Task]:
+        """Return all tasks across an owner's pets with a case-insensitive status match."""
+        normalized_status = status.strip().lower()
+        return [
+            task
+            for pet in owner.pets
+            for task in pet.get_tasks()
+            if task.status.lower() == normalized_status
+        ]
+
+    def filter_tasks(
+        self,
+        owner: Owner,
+        status: Optional[str] = None,
+        pet_name: Optional[str] = None,
+    ) -> List[Task]:
+        """Filter owner tasks by optional status and pet-name constraints.
+
+        When only status is provided, this delegates to filter_tasks_by_status
+        to keep comparison behavior consistent.
+        """
+        filtered: List[Task] = []
+        normalized_pet_name = pet_name.lower().strip() if pet_name else None
+
+        if status is not None and normalized_pet_name is None:
+            return self.filter_tasks_by_status(owner=owner, status=status)
+
+        for pet in owner.pets:
+            if normalized_pet_name and pet.name.lower() != normalized_pet_name:
+                continue
+            for task in pet.get_tasks():
+                if status is not None and task.status != status:
+                    continue
+                filtered.append(task)
+
+        return filtered
+
+    def mark_task_complete(self, pet: Pet, task_id: UUID, completed_on: Optional[date] = None) -> Optional[Task]:
+        """Complete a pet task and trigger recurrence rollover when configured."""
+        return pet.mark_task_complete(task_id=task_id, completed_on=completed_on)
