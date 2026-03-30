@@ -51,3 +51,24 @@ Recent improvements add more practical planning behavior for busy owners:
 - Recurring care automation: marking a `daily` or `weekly` task complete automatically creates the next pending occurrence.
 - Due-date rollover: recurrence dates are advanced using `timedelta` (`+1 day` for daily, `+7 days` for weekly).
 - UI support for recurrence: owners can set frequency and due date directly from the Streamlit task builder.
+
+## Testing PawPal+
+
+Core behaviors to verify:
+
+- Sorting correctness: tasks sort in chronological order by preferred time window.
+- Recurrence logic: completing daily and weekly tasks creates the correct next pending task.
+- Conflict detection: duplicate preferred start times are flagged as conflicts.
+- Filtering behavior: status and pet filters return the expected subset of tasks.
+- Edge cases: empty task lists and same-time tie-breaking remain stable.
+
+In short, the suite validates happy paths (expected sorting/filtering/recurrence flows)
+and edge cases (empty tasks and duplicate preferred start times).
+
+Run tests from the project root:
+
+```bash
+python -m pytest
+```
+
+Confidence Level: ★★★★☆ (4/5) based on the current passing test suite (12 passing tests).

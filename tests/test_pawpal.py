@@ -227,3 +227,83 @@ def test_scheduler_mark_task_complete_weekly_creates_new_instance() -> None:
     assert next_task.due_date == date(2026, 4, 5)
     assert next_task.frequency == "weekly"
     assert len(pet.get_tasks()) == 2
+
+
+def test_sort_by_time_handles_empty_task_list() -> None:
+    scheduler = Scheduler()
+
+    assert scheduler.sort_by_time([]) == []
+
+
+def test_sort_by_time_tie_breaks_by_title_for_same_start_hour() -> None:
+    scheduler = Scheduler()
+    tasks = [
+        Task(
+            title="Bravo Walk",
+            task_type=TaskType.WALK,
+            duration_minutes=20,
+            priority=3,
+            importance=3,
+            preferred_window=TimeWindow(start_hour=8, end_hour=9),
+        ),
+        Task(
+            title="Alpha Feed",
+            task_type=TaskType.FEEDING,
+            duration_minutes=10,
+            priority=5,
+            importance=6,
+            preferred_window=TimeWindow(start_hour=8, end_hour=10),
+        ),
+    ]
+
+    sorted_titles = [task.title for task in scheduler.sort_by_time(tasks)]
+
+    assert sorted_titles == ["Alpha Feed", "Bravo Walk"]
+
+
+def test_scheduler_detects_duplicate_preferred_start_times() -> None:
+    scheduler = Scheduler()
+    tasks = [
+        Task(
+            title="Morning Feed",
+            task_type=TaskType.FEEDING,
+            duration_minutes=10,
+            priority=8,
+            importance=8,
+            preferred_window=TimeWindow(start_hour=7, end_hour=8),
+        ),
+        Task(
+            title="Morning Meds",
+            task_type=TaskType.MEDICATION,
+            duration_minutes=5,
+            priority=10,
+            importance=10,
+            preferred_window=TimeWindow(start_hour=7, end_hour=9),
+        ),
+    ]
+
+    assert scheduler.has_time_conflicts(tasks) is True
+
+
+def test_scheduler_no_conflicts_when_preferred_start_times_are_unique() -> None:
+    scheduler = Scheduler()
+    tasks = [
+        Task(
+            title="Morning Feed",
+            task_type=TaskType.FEEDING,
+            duration_minutes=10,
+            priority=8,
+            importance=8,
+            preferred_window=TimeWindow(start_hour=7, end_hour=8),
+        ),
+        Task(
+            title="Evening Walk",
+            task_type=TaskType.WALK,
+            duration_minutes=20,
+            priority=6,
+            importance=6,
+            preferred_window=TimeWindow(start_hour=18, end_hour=20),
+        ),
+    ]
+
+    assert scheduler.has_time_conflicts(tasks) is False

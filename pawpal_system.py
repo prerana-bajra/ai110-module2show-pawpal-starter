@@ -231,6 +231,22 @@ class Scheduler:
         """
         return sorted(tasks, key=task_time_sort_key)
 
+    def has_time_conflicts(self, tasks: List[Task]) -> bool:
+        """Return True when two or more tasks share the same preferred start hour.
+
+        Untimed tasks are ignored for conflict checks because they do not have a
+        fixed scheduled slot.
+        """
+        seen_start_hours: set[int] = set()
+        for task in tasks:
+            if task.preferred_window is None:
+                continue
+            start_hour = task.preferred_window.start_hour
+            if start_hour in seen_start_hours:
+                return True
+            seen_start_hours.add(start_hour)
+        return False
+
     def filter_tasks_by_status(self, owner: Owner, status: str) -> List[Task]:
         """Return all tasks across an owner's pets with a case-insensitive status match."""
         normalized_status = status.strip().lower()
