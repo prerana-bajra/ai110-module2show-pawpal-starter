@@ -342,9 +342,46 @@ if st.button("Add task", use_container_width=True):
         st.success(f"Added task: {new_task.title}")
 
 st.markdown("### Current Tasks")
+scheduler_ui = SimpleScheduler(time_penalty_weight=1.0)
 show_completed_tasks = st.checkbox("Show completed tasks", value=False)
-all_tasks = sorted(active_pet.get_tasks(), key=pawpal.task_time_sort_key)
+all_tasks = scheduler_ui.sort_by_time(active_pet.get_tasks())
 tasks_list = all_tasks if show_completed_tasks else [task for task in all_tasks if task.status != "completed"]
+
+pending_count = len(scheduler_ui.filter_tasks(owner=active_owner, status="pending", pet_name=active_pet.name))
+completed_count = len(scheduler_ui.filter_tasks(owner=active_owner, status="completed", pet_name=active_pet.name))
+status_col1, status_col2 = st.columns(2)
+with status_col1:
+    st.success(f"Pending tasks for {active_pet.name}: {pending_count}")
+with status_col2:
+    st.info(f"Completed tasks for {active_pet.name}: {completed_count}")
+
+if scheduler_ui.has_time_conflicts(tasks_list):
+    conflicting_tasks = [task for task in tasks_list if task.preferred_window is not None]
+    conflict_rows = []
+    slot_counts: dict[int, int] = {}
+    for task in conflicting_tasks:
+        start_hour = task.preferred_window.start_hour
+        slot_counts[start_hour] = slot_counts.get(start_hour, 0) + 1
+    for task in conflicting_tasks:
+        start_hour = task.preferred_window.start_hour
+        if slot_counts.get(start_hour, 0) > 1:
+            conflict_rows.append(
+                {
+                    "task": task.title,
+                    "slot": (
+                        f"{task.preferred_window.start_hour:02d}:00-"
+                        f"{task.preferred_window.end_hour:02d}:00"
+                    ),
+                }
+            )
+
+    st.warning(
+        "Two or more tasks share the same preferred start hour. "
+        "Consider adjusting one time window so your pet-care plan is easier to follow."
+    )
+    if conflict_rows:
+        st.table(conflict_rows)
+
 if tasks_list:
     st.table(
         [
@@ -381,7 +418,7 @@ if tasks_list:
         selected_complete_label = st.selectbox("Mark a task complete", list(complete_options.keys()))
         if st.button("Complete selected task"):
             selected_task_id = complete_options[selected_complete_label]
-            next_task = active_pet.mark_task_complete(selected_task_id)
+            next_task = scheduler_ui.mark_task_complete(active_pet, selected_task_id)
             if next_task is None:
                 st.success("Task marked complete.")
             else:
